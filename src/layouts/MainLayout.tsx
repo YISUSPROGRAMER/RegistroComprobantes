@@ -14,19 +14,19 @@ export const MainLayout: React.FC = () => {
     ];
 
     useEffect(() => {
-        const runAutoSync = () => {
-            SyncService.autoSync({ minIntervalMs: 10000 }).catch((error) => {
+        const runAutoSync = (notifyUser = false) => {
+            SyncService.autoSync({ minIntervalMs: 10000, notifyUser }).catch((error) => {
                 console.error('[AutoSync] Error:', error);
             });
         };
 
-        runAutoSync();
+        runAutoSync(true);
 
-        const intervalId = window.setInterval(runAutoSync, 60000);
-        const onFocus = () => runAutoSync();
-        const onOnline = () => runAutoSync();
+        const intervalId = window.setInterval(() => runAutoSync(), 60000);
+        const onFocus = () => runAutoSync(true);
+        const onOnline = () => runAutoSync(true);
         const onVisibilityChange = () => {
-            if (document.visibilityState === 'visible') runAutoSync();
+            if (document.visibilityState === 'visible') runAutoSync(true);
         };
 
         window.addEventListener('focus', onFocus);

@@ -6,6 +6,7 @@ interface SyncOptions {
     silent?: boolean;
     skipOnlineToast?: boolean;
     pullAfterPush?: boolean;
+    notifyUser?: boolean;
 }
 
 const hasApiConfig = () => {
@@ -22,18 +23,18 @@ export const SyncService = {
     lastAutoSyncAt: 0,
 
     async syncUp(options: SyncOptions = {}) {
-        if (this.isSyncing) return false;
+        if (this.isSyncing) return { ok: false, pushed: 0 };
 
         if (!hasApiConfig()) {
             if (!options.silent) {
                 toast.error('Configura URL y token para sincronizar');
             }
-            return false;
+            return { ok: false, pushed: 0 };
         }
 
         if (!navigator.onLine) {
             if (!options.skipOnlineToast) notifyError('Sin conexion a internet', options);
-            return false;
+            return { ok: false, pushed: 0 };
         }
 
         this.isSyncing = true;
@@ -43,9 +44,11 @@ export const SyncService = {
             const pendingComprobantes = await db.comprobantes.where('sync').equals(1).toArray();
             const pendingTerceros = await db.terceros.where('sync').equals(1).toArray();
 
-            if (pendingComprobantes.length === 0 && pendingTerceros.length === 0) {
+            const pendingTotal = pendingComprobantes.length + pendingTerceros.length;
+
+            if (pendingTotal === 0) {
                 if (!options.silent && toastId) toast.success('Todo al dia (subida)', { id: toastId });
-                return true;
+                return { ok: true, pushed: 0 };
             }
 
             const response = await ApiService.syncData({
@@ -85,15 +88,15 @@ export const SyncService = {
                     });
                 }
 
-                return true;
+                return { ok: true, pushed: pendingTotal };
             }
 
             if (!options.silent && toastId) toast.error('Error en servidor al recibir datos', { id: toastId });
-            return false;
+            return { ok: false, pushed: 0 };
         } catch (error) {
             console.error('[Sync] Error en syncUp:', error);
             if (!options.silent && toastId) toast.error('Error de sincronizacion', { id: toastId });
-            return false;
+            return { ok: false, pushed: 0 };
         } finally {
             this.isSyncing = false;
         }
@@ -102,18 +105,34 @@ export const SyncService = {
     async syncDown(options: SyncOptions = {}) {
         if (!hasApiConfig()) {
             if (!options.silent) toast.error('Configura URL y token para sincronizar');
-            return false;
+            return { ok: false, pulled: 0 };
         }
 
         if (!navigator.onLine) {
             if (!options.skipOnlineToast) notifyError('Sin conexion a internet', options);
-            return false;
+            return { ok: false, pulled: 0 };
         }
 
-        const toastId = options.silent ? undefined : toast.loading('Descargando datos del servidor...');
+        let toastId: string | undefined;
 
         try {
             const data = await ApiService.getData();
+            const localComprobantesCount = await db.comprobantes.count();
+            const localTercerosCount = await db.terceros.count();
+
+            const remoteComprobantesCount = Array.isArray(data.comprobantes) ? data.comprobantes.length : 0;
+            const remoteTercerosCount = Array.isArray(data.terceros) ? data.terceros.length : 0;
+            const hasPotentialNewData =
+                remoteComprobantesCount > localComprobantesCount || remoteTercerosCount > localTercerosCount;
+
+            if (!options.silent) {
+                toastId = toast.loading('Descargando datos del servidor...');
+            } else if (options.notifyUser && hasPotentialNewData) {
+                toastId = toast.loading('Sincronizando nuevos datos encontrados...');
+            }
+
+            let pulledComprobantes = 0;
+            let pulledTerceros = 0;
 
             await db.transaction('rw', db.comprobantes, db.terceros, async () => {
                 if (Array.isArray(data.terceros)) {
@@ -125,6 +144,7 @@ export const SyncService = {
                                 sync: 0,
                                 deleted: 0
                             });
+                            pulledTerceros += 1;
                         }
                     }
                 }
@@ -143,32 +163,59 @@ export const SyncService = {
                                 sync: 0,
                                 deleted: 0
                             });
+                            pulledComprobantes += 1;
                         }
                     }
                 }
             });
 
-            if (!options.silent && toastId) toast.success('Sincronizacion completa', { id: toastId });
-            return true;
+            const pulledTotal = pulledComprobantes + pulledTerceros;
+
+            if (!options.silent && toastId) {
+                toast.success('Sincronizacion completa', { id: toastId });
+            } else if (options.notifyUser && toastId) {
+                if (pulledTotal > 0) {
+                    toast.success(`Sincronizacion completa. ${pulledTotal} registros actualizados.`, { id: toastId });
+                } else {
+                    toast.dismiss(toastId);
+                }
+            }
+
+            return { ok: true, pulled: pulledTotal };
         } catch (error) {
             console.error('[SyncDown] Error:', error);
             if (!options.silent && toastId) toast.error('Error al descargar datos', { id: toastId });
-            return false;
+            if (options.silent && options.notifyUser && toastId) {
+                toast.error('Error al sincronizar datos nuevos', { id: toastId });
+            }
+            return { ok: false, pulled: 0 };
         }
     },
 
     async syncAll(options: SyncOptions = {}) {
-        if (this.isSyncing) return false;
-        const upOk = await this.syncUp({ ...options, pullAfterPush: false });
-        if (!upOk && !navigator.onLine) return false;
-        return this.syncDown(options);
+        if (this.isSyncing) return { ok: false, pushed: 0, pulled: 0 };
+        const upResult = await this.syncUp({ ...options, pullAfterPush: false });
+        if (!upResult.ok && !navigator.onLine) return { ok: false, pushed: 0, pulled: 0 };
+        const downResult = await this.syncDown(options);
+        return {
+            ok: upResult.ok && downResult.ok,
+            pushed: upResult.pushed,
+            pulled: downResult.pulled
+        };
     },
 
-    async autoSync({ minIntervalMs = 15000 } = {}) {
+    async autoSync({ minIntervalMs = 15000, notifyUser = false } = {}) {
         const now = Date.now();
-        if (now - this.lastAutoSyncAt < minIntervalMs) return false;
+        if (now - this.lastAutoSyncAt < minIntervalMs) {
+            return { ok: false, skipped: true, pushed: 0, pulled: 0 };
+        }
         this.lastAutoSyncAt = now;
-        return this.syncAll({ silent: true, skipOnlineToast: true, pullAfterPush: false });
+        return this.syncAll({
+            silent: true,
+            skipOnlineToast: true,
+            pullAfterPush: false,
+            notifyUser
+        });
     },
 
     async resetSyncStatus() {
