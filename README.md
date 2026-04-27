@@ -36,7 +36,7 @@ El Apps Script (`backend/Code.js`) crea y mantiene estas hojas:
 ### Probar desde celular en red local
 
 - Para abrir desde otro dispositivo en la misma red: `npm run dev:lan`
-- URL ejemplo: `http://<IP-PC>:5173/RegistroDeComprobantes/`
+- URL ejemplo: `http://<IP-PC>:5173/RegistroComprobantes/`
 
 Nota importante:
 - En Android/iOS, si usas **HTTP por IP local** (`http://192...`, `http://198...`), normalmente el navegador solo permite **Agregar acceso directo**.
@@ -52,7 +52,7 @@ Nota importante:
 ## Despliegue en GitHub Pages (indicado)
 
 1. Subir el proyecto a un repositorio GitHub.
-2. En `vite.config.ts`, ajustar `VITE_BASE_PATH` (o dejar `/RegistroDeComprobantes/` si coincide con el nombre del repo).
+2. En `vite.config.ts`, ajustar `VITE_BASE_PATH` (o dejar `/RegistroComprobantes/` si coincide con el nombre del repo).
 3. Habilitar GitHub Pages con **GitHub Actions**.
 4. El workflow ya existe en `.github/workflows/deploy.yml` y desplegara en cada push a `main`.
 

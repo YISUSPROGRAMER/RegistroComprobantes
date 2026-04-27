@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-const basePath = process.env.VITE_BASE_PATH || '/RegistroDeComprobantes/'
+const basePath = process.env.VITE_BASE_PATH || '/RegistroComprobantes/'
 
 export default defineConfig({
   base: basePath,
