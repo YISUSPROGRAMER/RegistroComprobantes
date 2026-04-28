@@ -11,9 +11,17 @@ const today = new Date().toISOString().split('T')[0];
 
 const normalizeName = (value: string) => value.trim().toLowerCase();
 
+const formatCopInput = (raw: string) => {
+    const digits = raw.replace(/\D/g, '');
+    if (!digits) return '';
+    const value = Number.parseInt(digits, 10);
+    return `$ ${new Intl.NumberFormat('es-CO').format(value)}`;
+};
+
 const parseCurrencyInput = (value: string) => {
-    const cleaned = value.replace(/\./g, '').replace(',', '.').replace(/[^\d.]/g, '');
-    const parsed = Number.parseFloat(cleaned);
+    const digits = value.replace(/\D/g, '');
+    if (!digits) return NaN;
+    const parsed = Number.parseInt(digits, 10);
     return Number.isFinite(parsed) ? parsed : NaN;
 };
 
@@ -36,7 +44,7 @@ export const ComprobanteForm: React.FC = () => {
             if (!current) return;
             setTipo(current.tipo);
             setFecha(String(current.fecha || '').split('T')[0] || today);
-            setValorInput(String(current.valor || ''));
+            setValorInput(current.valor ? formatCopInput(String(current.valor)) : '');
             setRecibidoDe(current.recibidoDe || '');
             setConcepto(current.concepto || '');
         });
@@ -164,11 +172,11 @@ export const ComprobanteForm: React.FC = () => {
                                     type="text"
                                     inputMode="decimal"
                                     required
-                                    value={valorInput}
-                                    onChange={(event) => setValorInput(event.target.value)}
-                                    placeholder="Ejemplo: 250000"
-                                    className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-cyan-500"
-                                />
+                                value={valorInput}
+                                onChange={(event) => setValorInput(formatCopInput(event.target.value))}
+                                placeholder="Ejemplo: $ 250.000"
+                                className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
                             </div>
 
                             <div className="sm:col-span-2">
